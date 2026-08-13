@@ -4,6 +4,7 @@ from app.api.heatmap import router as heatmap_data_router
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis, get_redis
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.model import router as prediction_model_router
 
 
@@ -19,6 +20,15 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins / domains
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
+
 
 @app.get("/")
 async def root() :
