@@ -4,6 +4,7 @@ from app.api.heatmap import router as heatmap_data_router
 from app.core.config import settings
 from app.core.redis import init_redis, close_redis, get_redis
 from contextlib import asynccontextmanager
+from app.api.model import router as prediction_model_router
 
 
 
@@ -27,3 +28,4 @@ async def root() :
     }
 app.include_router(health_router)
 app.include_router(heatmap_data_router)
+app.include_router(prediction_model_router)
