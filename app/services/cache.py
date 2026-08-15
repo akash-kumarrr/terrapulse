@@ -21,10 +21,10 @@ async def get_or_set_cache(
         return json.loads(cached_value)
 
     # 2. Key does not exist: Fetch/Compute original data
-    data = fetch_func()
+    data = await fetch_func()
 
     # 3. Store in Redis with TTL (Time-To-Live)
     if data is not None:
         await redis.set(key, json.dumps(data), ex=ttl)
 
-    return json.load(data)
+    return data
