@@ -34,27 +34,28 @@ async def extract_city_environmental_data(request: CityDataRequest) -> str:
     return await asyncio.to_thread(_extract_city_environmental_data_sync, request)
 
 
+def _initialize_earth_engine(project_id: str) -> None:
+    try:
+        ee.Initialize(project=project_id)
+        return
+    except Exception as init_err:
+        raise RuntimeError(
+            f"Earth Engine initialization failed for project '{project_id}'. "
+            "This environment is not authenticated for Google Earth Engine. "
+            "Configure valid auth for the project and retry."
+        ) from init_err
+
+
 def _extract_city_environmental_data_sync(request: CityDataRequest) -> str:
-    project_id = request.gcp_project_id or os.getenv("EARTH_ENGINE_PROJECT")
+    project_id = request.gcp_project_id or os.getenv("GEE_PROJECT_ID") or os.getenv("EARTH_ENGINE_PROJECT")
     if not project_id:
         raise ValueError(
             "[-] Error: Google Cloud Project ID not found. "
-            "Provide it in the prompt or set EARTH_ENGINE_PROJECT in your .env file."
+            "Provide it in the prompt or set GEE_PROJECT_ID / EARTH_ENGINE_PROJECT in your environment."
         )
 
     print(f"[1] Initializing Earth Engine with project '{project_id}'...")
-    try:
-        ee.Initialize(project=project_id)
-    except Exception as init_err:
-        print(f"[!] Initial connection notice: {init_err}. Executing auth sequence...")
-        if hasattr(ee, "Authenticate"):
-            ee.Authenticate()
-        elif hasattr(ee, "authenticate"):
-            ee.authenticate()
-        else:
-            raise RuntimeError("[-] Earth Engine authentication method not found in package.")
-
-        ee.Initialize(project=project_id)
+    _initialize_earth_engine(project_id)
 
     print(f"[2] Resolving geographic coordinates via Geopy for: {request.city}, {request.state}...")
     geolocator = Nominatim(user_agent="terrapulse-geodata-extractor")
