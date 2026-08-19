@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Optional
 import ee
@@ -24,12 +25,16 @@ class CityDataRequest(BaseModel):
     num_pixels: int = Field(2000, description="Maximum number of rows/pixels to extract")
 
 
-def extract_city_environmental_data(request: CityDataRequest) -> str:
+async def extract_city_environmental_data(request: CityDataRequest) -> str:
     """
-    Extracts Albedo, Building Density, NDWI, NDVI, Atmospheric parameters, and LST 
-    for a given city/state, computes Rn, G, and H physics vectors, and returns 
+    Extracts Albedo, Building Density, NDWI, NDVI, Atmospheric parameters, and LST
+    for a given city/state, computes Rn, G, and H physics vectors, and returns
     the result directly as a JSON string (records orientation).
     """
+    return await asyncio.to_thread(_extract_city_environmental_data_sync, request)
+
+
+def _extract_city_environmental_data_sync(request: CityDataRequest) -> str:
     project_id = request.gcp_project_id or os.getenv("EARTH_ENGINE_PROJECT")
     if not project_id:
         raise ValueError(
@@ -48,16 +53,16 @@ def extract_city_environmental_data(request: CityDataRequest) -> str:
             ee.authenticate()
         else:
             raise RuntimeError("[-] Earth Engine authentication method not found in package.")
-        
+
         ee.Initialize(project=project_id)
 
     print(f"[2] Resolving geographic coordinates via Geopy for: {request.city}, {request.state}...")
     geolocator = Nominatim(user_agent="terrapulse-geodata-extractor")
     location = geolocator.geocode(f"{request.city}, {request.state}")
-    
+
     if not location:
         raise ValueError(f"[-] Error: Could not locate boundaries for '{request.city}, {request.state}'. Please verify spelling.")
-    
+
     print(f"[+] Location successfully resolved: {location.address}")
 
     bbox = location.raw['boundingbox']
@@ -117,14 +122,14 @@ def extract_city_environmental_data(request: CityDataRequest) -> str:
     print(f"[6] Sampling matrix down to target feature size of {request.num_pixels} pixels...")
     sample_points = combined_image.sample(
         region=aoi_geometry,
-        scale=request.scale,  
-        numPixels=request.num_pixels,   
-        geometries=True   
+        scale=request.scale,
+        numPixels=request.num_pixels,
+        geometries=True
     )
 
     print("[7] Downloading raw pixel features from Earth Engine server...")
     features = sample_points.getInfo().get('features', [])
-    
+
     if not features:
         raise ValueError("[-] Error: Boundary matrix contains zero sampleable data points.")
 
@@ -140,8 +145,8 @@ def extract_city_environmental_data(request: CityDataRequest) -> str:
     df = pd.DataFrame(data_list)
 
     print("[8] Calculating Energy Balance Physics Matrices (Rn, G, H)...")
-    SIGMA = 5.67e-8  
-    G_SOLAR = 800.0  
+    SIGMA = 5.67e-8
+    G_SOLAR = 800.0
 
     df['NDVI'] = df.get('NDVI', 0.0).fillna(0.0)
     df['Albedo'] = df.get('Albedo', 0.2).fillna(0.2)
@@ -158,14 +163,12 @@ def extract_city_environmental_data(request: CityDataRequest) -> str:
     df['G_SoilHeatFlux'] = df['Rn_NetRadiation'] * (df['LST_Celsius'] / df['Albedo']) * \
                            (0.0038 * df['Albedo'] + 0.0074 * (df['Albedo']**2)) * \
                            (1.0 - 0.98 * (ndvi_clipped**4))
-    
+
     df['G_SoilHeatFlux'] = df['G_SoilHeatFlux'].fillna(df['Rn_NetRadiation'] * 0.1)
     df['H_SensibleHeatFlux'] = (df['Rn_NetRadiation'] - df['G_SoilHeatFlux']) * \
                                (1.0 - df['NDVI']) * (1.0 + 0.1 * wind_speed)
 
-    # Convert DataFrame directly to JSON string (records orientation)
-    json_data = df.to_json(orient="records", date_format="iso")
-    return json_data
+    return df.to_json(orient="records", date_format="iso")
 
 """
 if __name__ == "__main__":
